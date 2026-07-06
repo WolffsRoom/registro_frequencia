@@ -71,16 +71,6 @@
           "manhaFim": "11:00",
           "tardeIni": "14:00",
           "tardeFim": "18:00"
-        },
-        {
-          "id": "augdwepv",
-          "dia": "",
-          "mes": "Julho",
-          "semana": "",
-          "manhaIni": "",
-          "manhaFim": "",
-          "tardeIni": "",
-          "tardeFim": ""
         }
       ]
     }
