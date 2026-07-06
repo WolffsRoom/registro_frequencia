@@ -44,7 +44,23 @@
   .line-total strong{color:var(--ink);font-size:15px;margin-left:4px;}
 
   :focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
-  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+
+  /* ---- animações de transição ---- */
+  @keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+  @keyframes riseIn{ from{opacity:0; transform:translateY(12px)} to{opacity:1; transform:none} }
+  @keyframes exitOut{ from{opacity:1; transform:none; max-height:260px} to{opacity:0; transform:translateX(40px); max-height:0; margin-bottom:0; padding-top:0; padding-bottom:0; border-width:0} }
+
+  #loginOverlay{ transition:opacity .45s ease; }
+  #loginOverlay.hiding{ opacity:0; pointer-events:none; }
+  #loginOverlay img{ animation:riseIn .55s cubic-bezier(.22,.61,.36,1) both; }
+
+  #appWrap{ animation:fadeIn .5s ease both; }
+  #app.screen-enter{ animation:fadeIn .3s ease both; }
+
+  .stagger{ opacity:0; animation:riseIn .38s cubic-bezier(.22,.61,.36,1) both; }
+  .exiting{ overflow:hidden; animation:exitOut .3s ease forwards; }
+
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
 </style>
 </head>
 <body>
@@ -170,9 +186,12 @@ function openPerson(id){ view.screen="sheet"; view.selectedId=id; renderApp(); }
 function backToList(){ view.screen="list"; view.selectedId=null; renderApp(); }
 function removePerson(id, nome){
   if(!confirm('Remover "' + nome + '" e todos os registros?')) return;
-  state.people = state.people.filter(p=>p.id!==id);
-  save();
-  if(view.selectedId===id) backToList(); else renderApp();
+  const aplicar = ()=>{
+    state.people = state.people.filter(p=>p.id!==id);
+    save();
+    if(view.selectedId===id) backToList(); else renderApp();
+  };
+  animarSaida(document.getElementById("pessoa-"+id), aplicar);
 }
 function findPerson(id){ return state.people.find(p=>p.id===id); }
 
@@ -202,9 +221,11 @@ function addHoje(pid){
 }
 function removeLinha(pid, lid){
   const p = findPerson(pid); if(!p) return;
-  p.linhas = p.linhas.filter(l=>l.id!==lid);
-  save();
-  renderApp();
+  animarSaida(document.getElementById("linha-"+lid), ()=>{
+    p.linhas = p.linhas.filter(l=>l.id!==lid);
+    save();
+    renderApp();
+  });
 }
 
 // ---------------- edição de campos (sem re-render, evita perder foco) ----------------
@@ -242,13 +263,27 @@ function renderApp(){
   app.innerHTML = view.screen==="sheet" && view.selectedId
     ? renderSheet(findPerson(view.selectedId))
     : renderList();
+  // reinicia a animação de entrada da tela a cada render
+  app.classList.remove("screen-enter");
+  void app.offsetWidth;
+  app.classList.add("screen-enter");
+}
+
+// remove um elemento com animação de saída e então executa a ação real
+function animarSaida(el, cb){
+  if(!el){ cb(); return; }
+  let feito = false;
+  const run = ()=>{ if(feito) return; feito = true; cb(); };
+  el.classList.add("exiting");
+  el.addEventListener("animationend", run, { once:true });
+  setTimeout(run, 340);
 }
 
 function renderList(){
-  const rows = state.people.map(p=>{
+  const rows = state.people.map((p,i)=>{
     const n = (p.linhas||[]).length;
     return `
-      <div class="card card-click" style="padding:14px 16px;display:flex;align-items:center;gap:10px;"
+      <div class="card card-click stagger" id="pessoa-${p.id}" style="padding:14px 16px;display:flex;align-items:center;gap:10px;animation-delay:${i*45}ms;"
            onclick="openPerson('${p.id}')">
         <div style="flex:1;min-width:0;">
           <div style="font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
@@ -290,7 +325,7 @@ function renderSheet(p){
 
   const linhasHtml = linhasVisiveis.length === 0
     ? `<div class="card" style="padding:22px;text-align:center;color:var(--muted);">Nenhum lançamento em ${escapeHtml(p.mesAtual)} ainda. Toque em "+ Linha" ou "+ Hoje" para começar.</div>`
-    : linhasVisiveis.map(l=>{
+    : linhasVisiveis.map((l,i)=>{
         const diaOpts = ['<option value="">—</option>'].concat(
           Array.from({length:31},(_,i)=>String(i+1)).map(d=>opt(d,d,l.dia===d))
         ).join("");
@@ -298,7 +333,7 @@ function renderSheet(p){
           DIAS_SEMANA.map(d=>opt(d,d,l.semana===d))
         ).join("");
         return `
-      <div class="line-card">
+      <div class="line-card stagger" id="linha-${l.id}" style="animation-delay:${i*40}ms;">
         <div class="line-grid">
           <div class="field"><label>Dia</label>
             <select class="inp mono" onchange="onCampoLinha('${p.id}','${l.id}','dia',this.value)">${diaOpts}</select>
@@ -526,9 +561,12 @@ function exportarImagem(pid){
 const SENHA = "6783";
 const AUTH_KEY = "folha-frequencia:auth";
 function estaAutenticado(){ return sessionStorage.getItem(AUTH_KEY) === "1"; }
-function mostrarApp(){
-  document.getElementById("loginOverlay").style.display = "none";
+function mostrarApp(animar){
+  const ov = document.getElementById("loginOverlay");
   document.getElementById("appWrap").style.display = "";
+  if(animar === false){ ov.style.display = "none"; return; }
+  ov.classList.add("hiding");
+  setTimeout(()=>{ ov.style.display = "none"; }, 450);
 }
 function tentarLogin(){
   const el = document.getElementById("senhaInput");
@@ -546,7 +584,7 @@ function tentarLogin(){
 load();
 renderApp();
 if(estaAutenticado()){
-  mostrarApp();
+  mostrarApp(false);
 } else {
   document.getElementById("senhaInput").focus();
 }
