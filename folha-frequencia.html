@@ -125,7 +125,7 @@
 <script>
 // ---------------- estado e persistência ----------------
 const STORAGE_KEY = "folha-frequencia:standalone:v3";
-const DIAS_SEMANA = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+const DIAS_SEMANA = ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
@@ -212,15 +212,43 @@ function save(){
 // a gravação exige o token.
 const SYNC = { owner:"WolffsRoom", repo:"registro_frequencia", path:"dados.json", branch:"main" };
 const TOKEN_KEY = "folha-frequencia:gh-token";
-let ghSha = null;         // sha do arquivo remoto (necessário para atualizar)
+const TOKEN_PATH = "token.enc.json"; // token criptografado, compartilhado entre aparelhos
+const PW_KEY = "folha-frequencia:pw"; // senha do login (só na sessão) — chave da criptografia
+let ghSha = null;         // sha do dados.json remoto
+let ghShaToken = null;    // sha do token.enc.json remoto
 let syncTimer = null;     // debounce das gravações
 let carregandoRemoto = false; // evita commit redundante durante a carga inicial
 
 function getToken(){ return localStorage.getItem(TOKEN_KEY) || ""; }
 function setToken(t){ if(t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); }
+function getSenhaSessao(){ return sessionStorage.getItem(PW_KEY) || ""; }
+function setSenhaSessao(pw){ if(pw) sessionStorage.setItem(PW_KEY, pw); }
 function b64EncodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUtf8(b64){ return decodeURIComponent(escape(atob(b64))); }
-function apiUrl(){ return "https://api.github.com/repos/" + SYNC.owner + "/" + SYNC.repo + "/contents/" + SYNC.path; }
+function apiUrlFor(path){ return "https://api.github.com/repos/" + SYNC.owner + "/" + SYNC.repo + "/contents/" + path; }
+function apiUrl(){ return apiUrlFor(SYNC.path); }
+
+// ---- criptografia do token (AES-GCM, chave derivada da senha via PBKDF2) ----
+const PBKDF2_ITERS = 210000;
+function bytesToB64(buf){ const a=new Uint8Array(buf); let s=""; for(let i=0;i<a.length;i++) s+=String.fromCharCode(a[i]); return btoa(s); }
+function b64ToBytes(b64){ const s=atob(b64); const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+async function derivarChave(senha, saltBytes){
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name:"PBKDF2", salt:saltBytes, iterations:PBKDF2_ITERS, hash:"SHA-256" },
+    base, { name:"AES-GCM", length:256 }, false, ["encrypt","decrypt"]);
+}
+async function criptografarToken(token, senha){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const chave = await derivarChave(senha, salt);
+  const ct = await crypto.subtle.encrypt({ name:"AES-GCM", iv }, chave, new TextEncoder().encode(token));
+  return { v:1, salt:bytesToB64(salt), iv:bytesToB64(iv), ct:bytesToB64(ct) };
+}
+async function descriptografarToken(obj, senha){
+  const chave = await derivarChave(senha, b64ToBytes(obj.salt));
+  const pt = await crypto.subtle.decrypt({ name:"AES-GCM", iv:b64ToBytes(obj.iv) }, chave, b64ToBytes(obj.ct));
+  return new TextDecoder().decode(pt);
+}
 
 function setSync(estado, msg){
   const el = document.getElementById("syncStatus");
@@ -275,6 +303,53 @@ async function atualizarSha(){
   }catch(e){}
 }
 
+// baixa e decifra o token do repositório (para este aparelho poder gravar também)
+async function carregarTokenRemoto(){
+  if(getToken()) return true;                 // já temos token neste aparelho
+  const senha = getSenhaSessao(); if(!senha) return false;
+  try{
+    const r = await fetch(apiUrlFor(TOKEN_PATH) + "?ref=" + SYNC.branch,
+      { headers:{ "Accept":"application/vnd.github+json" }, cache:"no-store" });
+    if(r.status === 200){
+      const j = await r.json();
+      ghShaToken = j.sha;
+      const enc = JSON.parse(b64DecodeUtf8((j.content||"").replace(/\n/g,"")));
+      const tok = await descriptografarToken(enc, senha); // falha se a senha estiver errada
+      if(tok){ setToken(tok); return true; }
+    } else if(r.status === 404){ ghShaToken = null; }
+  }catch(e){ /* senha incorreta ou offline */ }
+  return false;
+}
+
+async function atualizarShaToken(){
+  try{
+    const headers = { "Accept":"application/vnd.github+json" };
+    const t = getToken(); if(t) headers["Authorization"] = "Bearer " + t;
+    const r = await fetch(apiUrlFor(TOKEN_PATH) + "?ref=" + SYNC.branch, { headers, cache:"no-store" });
+    if(r.status === 200){ ghShaToken = (await r.json()).sha; }
+    else if(r.status === 404){ ghShaToken = null; }
+  }catch(e){}
+}
+
+// cifra o token com a senha e grava no repositório, para os outros aparelhos
+async function salvarTokenRemoto(ehRetry){
+  const t = getToken(); const senha = getSenhaSessao();
+  if(!t || !senha) return;
+  try{
+    const enc = await criptografarToken(t, senha);
+    const conteudo = b64EncodeUtf8(JSON.stringify(enc, null, 2));
+    const body = { message:"Atualiza token criptografado", content:conteudo, branch:SYNC.branch };
+    if(ghShaToken) body.sha = ghShaToken;
+    const r = await fetch(apiUrlFor(TOKEN_PATH), {
+      method:"PUT",
+      headers:{ "Accept":"application/vnd.github+json", "Authorization":"Bearer "+t, "Content-Type":"application/json" },
+      body: JSON.stringify(body),
+    });
+    if(r.status === 200 || r.status === 201){ ghShaToken = (await r.json()).content.sha; }
+    else if(r.status === 409 && !ehRetry){ await atualizarShaToken(); return salvarTokenRemoto(true); }
+  }catch(e){}
+}
+
 function agendarSalvarRemoto(){
   if(carregandoRemoto) return;
   if(!getToken()){ setSync("local"); return; }
@@ -315,17 +390,21 @@ function abrirConfig(){
   const atual = t ? (t.slice(0,10) + "…" + t.slice(-4)) : "(nenhum configurado)";
   const novo = prompt(
     "Token do GitHub para salvar os dados no repositório.\n" +
-    "Ele fica guardado só neste aparelho.\n\n" +
+    "Ele será guardado criptografado no repositório (com a senha do login),\n" +
+    "para que os outros celulares acessem automaticamente após entrar.\n\n" +
     "Token atual: " + atual + "\n\n" +
     "• Cole um novo token para configurar\n" +
     "• Deixe em branco e OK para manter\n" +
-    "• Digite REMOVER para apagar", "");
+    "• Digite REMOVER para apagar deste aparelho", "");
   if(novo === null) return;
   const v = novo.trim();
   if(v === "") return;
   if(v.toUpperCase() === "REMOVER"){ setToken(""); setSync("local"); return; }
   setToken(v);
-  (async ()=>{ await atualizarSha(); await salvarRemoto(false); })();
+  (async ()=>{
+    await atualizarSha(); await salvarRemoto(false);
+    await atualizarShaToken(); await salvarTokenRemoto(false); // compartilha (cifrado) com os outros aparelhos
+  })();
 }
 function mesAtualPadrao(){ return MESES[new Date().getMonth()]; }
 function ensureMesAtual(p){ if(!p.mesAtual) p.mesAtual = mesAtualPadrao(); }
@@ -794,9 +873,20 @@ function exportarImagem(pid){
 }
 
 // ---------------- senha de acesso ----------------
-const SENHA = "6783";
+// A senha não fica em texto puro no código: guardamos só o hash (PBKDF2).
+// A própria senha digitada também é a chave que decifra o token compartilhado entre aparelhos.
+const SENHA_SALT = "QKyIcxoVpiDjm/EBWLmMZw==";
+const SENHA_HASH = "e688CjDxvWYSzC+ex/F3GwFTcDPLKkYW/Yaqc423HII=";
 const AUTH_KEY = "folha-frequencia:auth";
 function estaAutenticado(){ return sessionStorage.getItem(AUTH_KEY) === "1"; }
+async function senhaConfere(pw){
+  try{
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+      { name:"PBKDF2", salt:b64ToBytes(SENHA_SALT), iterations:PBKDF2_ITERS, hash:"SHA-256" }, base, 256);
+    return bytesToB64(bits) === SENHA_HASH;
+  }catch(e){ return false; }
+}
 function mostrarApp(animar){
   const ov = document.getElementById("loginOverlay");
   document.getElementById("appWrap").style.display = "";
@@ -804,11 +894,18 @@ function mostrarApp(animar){
   ov.classList.add("hiding");
   setTimeout(()=>{ ov.style.display = "none"; }, 450);
 }
-function tentarLogin(){
+async function tentarLogin(){
   const el = document.getElementById("senhaInput");
-  if((el.value || "").trim() === SENHA){
+  const pw = (el.value || "").trim();
+  if(await senhaConfere(pw)){
     sessionStorage.setItem(AUTH_KEY, "1");
+    setSenhaSessao(pw);
     mostrarApp();
+    // este aparelho acabou de entrar: tenta pegar o token compartilhado (cifrado) do repositório
+    (async ()=>{
+      const ok = await carregarTokenRemoto();
+      if(ok){ await carregarRemoto(); renderApp(); setSync("saved"); }
+    })();
   } else {
     document.getElementById("senhaErro").textContent = "Senha incorreta";
     el.value = "";
@@ -827,6 +924,8 @@ if(estaAutenticado()){
 // status inicial de sincronização + carga dos dados do repositório
 setSync(getToken() ? "saved" : "local");
 (async ()=>{
+  // sessão já autenticada: tenta recuperar o token compartilhado (cifrado) do repositório
+  if(estaAutenticado() && !getToken()) await carregarTokenRemoto();
   const ok = await carregarRemoto();
   renderApp();
   if(ok) setSync(getToken() ? "saved" : "local");
