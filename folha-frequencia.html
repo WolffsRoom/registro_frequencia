@@ -901,10 +901,17 @@ async function tentarLogin(){
     sessionStorage.setItem(AUTH_KEY, "1");
     setSenhaSessao(pw);
     mostrarApp();
-    // este aparelho acabou de entrar: tenta pegar o token compartilhado (cifrado) do repositório
     (async ()=>{
-      const ok = await carregarTokenRemoto();
-      if(ok){ await carregarRemoto(); renderApp(); setSync("saved"); }
+      if(getToken()){
+        // já tenho o token: garante que a cópia cifrada esteja no repo (p/ os outros aparelhos)
+        await atualizarShaToken();
+        if(!ghShaToken) await salvarTokenRemoto(false);
+      } else {
+        // não tenho: tenta pegar o token compartilhado (cifrado) e decifrar com a senha
+        const ok = await carregarTokenRemoto();
+        if(ok){ await carregarRemoto(); renderApp(); }
+      }
+      setSync(getToken() ? "saved" : "local");
     })();
   } else {
     document.getElementById("senhaErro").textContent = "Senha incorreta";
@@ -924,8 +931,16 @@ if(estaAutenticado()){
 // status inicial de sincronização + carga dos dados do repositório
 setSync(getToken() ? "saved" : "local");
 (async ()=>{
-  // sessão já autenticada: tenta recuperar o token compartilhado (cifrado) do repositório
-  if(estaAutenticado() && !getToken()) await carregarTokenRemoto();
+  if(estaAutenticado()){
+    if(getToken()){
+      // já autenticado e com token: garante a cópia cifrada no repo para os outros aparelhos
+      await atualizarShaToken();
+      if(!ghShaToken) await salvarTokenRemoto(false);
+    } else {
+      // sessão já autenticada sem token: recupera o token compartilhado (cifrado)
+      await carregarTokenRemoto();
+    }
+  }
   const ok = await carregarRemoto();
   renderApp();
   if(ok) setSync(getToken() ? "saved" : "local");
