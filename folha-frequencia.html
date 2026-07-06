@@ -7,7 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
-    --bg:#f3f5f1; --surface:#ffffff; --ink:#16302b; --accent:#2f7d63;
+    --bg:#363435; --surface:#ffffff; --ink:#16302b; --accent:#2f7d63;
     --accent-soft:#e4f0ea; --border:#dfe3dd; --muted:#6b7a72;
     --danger:#b4472f; --danger-soft:#f6e5e0;
   }
@@ -49,13 +49,13 @@
 </head>
 <body>
 <div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000;">
-  <div class="card" style="padding:28px 24px;max-width:340px;width:100%;text-align:center;">
-    <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Folha de Frequência</div>
-    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Digite a senha para acessar</div>
+  <div style="max-width:360px;width:100%;text-align:center;">
+    <img src="logo-branca.png" alt="Chapeação Paulinho" style="width:100%;max-width:300px;height:auto;margin:0 auto 22px;display:block;" />
+    <div style="color:#c9c7c8;font-size:13px;margin-bottom:14px;">Digite a senha para acessar</div>
     <input id="senhaInput" class="inp mono" type="password" inputmode="numeric" autocomplete="off" placeholder="Senha"
       style="text-align:center;font-size:18px;letter-spacing:.3em;"
       onkeydown="if(event.key==='Enter') tentarLogin()" />
-    <div id="senhaErro" style="color:var(--danger);font-size:13px;margin-top:10px;height:16px;"></div>
+    <div id="senhaErro" style="color:#f0a08c;font-size:13px;margin-top:10px;height:16px;"></div>
     <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="tentarLogin()">Entrar</button>
   </div>
 </div>
