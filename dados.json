@@ -55,8 +55,8 @@
           "mes": "Julho",
           "semana": "Terça",
           "manhaIni": "09:00",
-          "manhaFim": "",
-          "tardeIni": "",
+          "manhaFim": "13:00",
+          "tardeIni": "15:00",
           "tardeFim": ""
         }
       ]
