@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Folha de Frequência</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f5f1; --surface:#ffffff; --ink:#16302b; --accent:#2f7d63;
+    --accent-soft:#e4f0ea; --border:#dfe3dd; --muted:#6b7a72;
+    --danger:#b4472f; --danger-soft:#f6e5e0;
+  }
+  *{box-sizing:border-box; min-width:0;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);overflow-x:hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;}
+  .mono{font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace; font-variant-numeric: tabular-nums;}
+  .wrap{max-width:720px;margin:0 auto;padding:18px 14px 60px;}
+  .inp{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px;outline:none;width:100%;transition:border-color .15s, box-shadow .15s;}
+  .inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+  .btn{font:inherit;font-weight:600;cursor:pointer;border-radius:9px;padding:9px 14px;
+    border:1px solid transparent;transition:filter .15s, background .15s, transform .05s;}
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{filter:brightness(1.06);}
+  .btn-ghost{background:transparent;color:var(--ink);border-color:var(--border);}
+  .btn-ghost:hover{background:var(--accent-soft);border-color:var(--accent);}
+  .btn-danger{background:transparent;color:var(--danger);border-color:transparent;padding:6px 10px;font-size:13px;}
+  .btn-danger:hover{background:var(--danger-soft);}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;}
+  .card-click{cursor:pointer;transition:border-color .15s, box-shadow .15s, transform .1s;}
+  .card-click:hover{border-color:var(--accent);box-shadow:0 6px 18px rgba(22,48,43,.08);transform:translateY(-1px);}
+  .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px;}
+
+  /* linhas como cards, sem tabela larga: nunca precisa rolar de lado */
+  .line-card{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--surface);}
+  .line-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(78px, 1fr));gap:8px;}
+  .field label{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
+  .field select, .field input{width:100%;text-align:center;padding:7px 6px;}
+  .line-footer{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);}
+  .line-total{font-size:13px;color:var(--muted);}
+  .line-total strong{color:var(--ink);font-size:15px;margin-left:4px;}
+
+  :focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
+</style>
+</head>
+<body>
+<div id="loginOverlay" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000;">
+  <div class="card" style="padding:28px 24px;max-width:340px;width:100%;text-align:center;">
+    <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Folha de Frequência</div>
+    <div style="color:var(--muted);font-size:13px;margin-bottom:18px;">Digite a senha para acessar</div>
+    <input id="senhaInput" class="inp mono" type="password" inputmode="numeric" autocomplete="off" placeholder="Senha"
+      style="text-align:center;font-size:18px;letter-spacing:.3em;"
+      onkeydown="if(event.key==='Enter') tentarLogin()" />
+    <div id="senhaErro" style="color:var(--danger);font-size:13px;margin-top:10px;height:16px;"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="tentarLogin()">Entrar</button>
+  </div>
+</div>
+
+<div id="appWrap" class="wrap" style="display:none;">
+  <div style="margin-bottom:18px;">
+    <label class="label" for="headerTitleInput">Cabeçalho</label>
+    <input id="headerTitleInput" class="inp" style="font-size:19px;font-weight:700;margin-top:6px;"
+      oninput="onHeaderInput(this.value)" />
+  </div>
+  <div id="app"></div>
+</div>
+
+<script>
+// ---------------- estado e persistência ----------------
+const STORAGE_KEY = "folha-frequencia:standalone:v3";
+const DIAS_SEMANA = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+
+// formata horas decimais como "04h30m"
+function fmtHoras(h){
+  const totalMin = Math.round((h || 0) * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return String(hh).padStart(2,"0") + "h" + String(mm).padStart(2,"0") + "m";
+}
+
+function horasEntre(ini, fim){
+  if(!ini || !fim) return 0;
+  const [h1,m1] = ini.split(":").map(Number);
+  const [h2,m2] = fim.split(":").map(Number);
+  if([h1,m1,h2,m2].some(n=>isNaN(n))) return 0;
+  let mins = (h2*60+m2)-(h1*60+m1);
+  if(mins<0) mins += 24*60;
+  return mins/60;
+}
+function linhaHoras(l){ return horasEntre(l.manhaIni,l.manhaFim) + horasEntre(l.tardeIni,l.tardeFim); }
+function totalPessoa(p){ return (p.linhas||[]).reduce((s,l)=>s+linhaHoras(l),0); }
+function linhasDoMes(p){ return (p.linhas||[]).filter(l => l.mes === p.mesAtual); }
+function totalDoMes(p){ return linhasDoMes(p).reduce((s,l)=>s+linhaHoras(l),0); }
+
+function escapeHtml(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// Interpreta o que a pessoa digitou num campo de horário, reconhecendo tarde/noite.
+// periodo: 'manha' (mantém como digitado) ou 'tarde' (números pequenos viram tarde/noite: 2 -> 14:00, 9 -> 21:00)
+function normalizeHora(raw, periodo){
+  if(!raw) return "";
+  let s = String(raw).trim().toLowerCase().replace(/h/g, ":").replace(/[^0-9:]/g, "");
+  s = s.replace(/:+/g, ":");
+  if(s === "" || s === ":") return "";
+  let hh, mm;
+  if(s.includes(":")){
+    const [a,b] = s.split(":");
+    hh = parseInt(a || "0", 10);
+    mm = parseInt((b || "0").padEnd(2,"0").slice(0,2), 10);
+  } else if(s.length <= 2){
+    hh = parseInt(s, 10); mm = 0;
+  } else if(s.length === 3){
+    hh = parseInt(s.slice(0,1), 10); mm = parseInt(s.slice(1), 10);
+  } else {
+    hh = parseInt(s.slice(0,2), 10); mm = parseInt(s.slice(2,4), 10);
+  }
+  if(isNaN(hh)) hh = 0;
+  if(isNaN(mm)) mm = 0;
+  hh = Math.max(0, Math.min(23, hh));
+  mm = Math.max(0, Math.min(59, mm));
+  if(periodo === "tarde" && hh>=1 && hh<=11){ hh += 12; } // 1..11 lançado à tarde vira 13h..23h
+  return String(hh).padStart(2,"0") + ":" + String(mm).padStart(2,"0");
+}
+
+function novaLinha(mes){
+  return { id:uid(), dia:"", mes: mes || "", semana:"", manhaIni:"", manhaFim:"", tardeIni:"", tardeFim:"" };
+}
+
+let state = { headerTitle: "Folha de Frequência", people: [] };
+let view = { screen: "list", selectedId: null };
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const d = JSON.parse(raw);
+      if(d.headerTitle) state.headerTitle = d.headerTitle;
+      if(Array.isArray(d.people)) state.people = d.people;
+    }
+  }catch(e){ console.error("Falha ao carregar dados salvos", e); }
+}
+function save(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  catch(e){ console.error("Falha ao salvar", e); }
+}
+function mesAtualPadrao(){ return MESES[new Date().getMonth()]; }
+function ensureMesAtual(p){ if(!p.mesAtual) p.mesAtual = mesAtualPadrao(); }
+
+// ---------------- ações estruturais (re-renderizam) ----------------
+function addPerson(){
+  const inputEl = document.getElementById("novoNomeInput");
+  const nome = (inputEl.value || "").trim();
+  if(!nome) return;
+  const p = { id:uid(), nome, mesAtual: mesAtualPadrao(), linhas:[] };
+  p.linhas.push(novaLinha(p.mesAtual));
+  state.people.push(p);
+  save();
+  inputEl.value = "";
+  renderApp();
+}
+function openPerson(id){ view.screen="sheet"; view.selectedId=id; renderApp(); }
+function backToList(){ view.screen="list"; view.selectedId=null; renderApp(); }
+function removePerson(id, nome){
+  if(!confirm('Remover "' + nome + '" e todos os registros?')) return;
+  state.people = state.people.filter(p=>p.id!==id);
+  save();
+  if(view.selectedId===id) backToList(); else renderApp();
+}
+function findPerson(id){ return state.people.find(p=>p.id===id); }
+
+function onMesAtualChange(pid, v){
+  const p = findPerson(pid); if(!p) return;
+  p.mesAtual = v; save();
+  renderApp(); // muda o mês -> a lista de linhas exibida precisa trocar (são separadas por mês)
+}
+function addLinha(pid){
+  const p = findPerson(pid); if(!p) return;
+  ensureMesAtual(p);
+  p.linhas.push(novaLinha(p.mesAtual));
+  save();
+  renderApp();
+}
+function addHoje(pid){
+  const p = findPerson(pid); if(!p) return;
+  ensureMesAtual(p);
+  const d = new Date();
+  p.linhas.push({
+    ...novaLinha(p.mesAtual),
+    dia: String(d.getDate()),
+    semana: DIAS_SEMANA[(d.getDay()+6)%7],
+  });
+  save();
+  renderApp();
+}
+function removeLinha(pid, lid){
+  const p = findPerson(pid); if(!p) return;
+  p.linhas = p.linhas.filter(l=>l.id!==lid);
+  save();
+  renderApp();
+}
+
+// ---------------- edição de campos (sem re-render, evita perder foco) ----------------
+function onHeaderInput(v){ state.headerTitle = v; save(); }
+function onNomeInput(pid, v){
+  const p = findPerson(pid); if(!p) return;
+  p.nome = v; save();
+}
+function onCampoLinha(pid, lid, campo, v){
+  const p = findPerson(pid); if(!p) return;
+  const l = p.linhas.find(x=>x.id===lid); if(!l) return;
+  l[campo] = v;
+  save();
+}
+// para os campos de horário: normaliza, salva, atualiza totais (em formato XXhYYm) e devolve o valor pro input
+function onHorarioChange(pid, lid, campo, raw, periodo){
+  const p = findPerson(pid); if(!p) return raw;
+  const l = p.linhas.find(x=>x.id===lid); if(!l) return raw;
+  const v = normalizeHora(raw, periodo);
+  l[campo] = v;
+  save();
+  const horaCell = document.getElementById("hora-"+lid);
+  if(horaCell) horaCell.textContent = fmtHoras(linhaHoras(l));
+  const totalTopo = document.getElementById("total-topo-"+pid);
+  if(totalTopo) totalTopo.textContent = fmtHoras(totalDoMes(p));
+  const totalRodape = document.getElementById("total-rodape-"+pid);
+  if(totalRodape) totalRodape.textContent = fmtHoras(totalDoMes(p));
+  return v;
+}
+
+// ---------------- render ----------------
+function renderApp(){
+  document.getElementById("headerTitleInput").value = state.headerTitle;
+  const app = document.getElementById("app");
+  app.innerHTML = view.screen==="sheet" && view.selectedId
+    ? renderSheet(findPerson(view.selectedId))
+    : renderList();
+}
+
+function renderList(){
+  const rows = state.people.map(p=>{
+    const n = (p.linhas||[]).length;
+    return `
+      <div class="card card-click" style="padding:14px 16px;display:flex;align-items:center;gap:10px;"
+           onclick="openPerson('${p.id}')">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            ${escapeHtml(p.nome)}
+          </div>
+          <div style="font-size:13px;color:var(--muted);">${n} ${n===1?"registro":"registros"}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="mono" style="font-size:16px;font-weight:700;color:var(--accent);white-space:nowrap;">${fmtHoras(totalPessoa(p))}</div>
+          <div style="font-size:11px;color:var(--muted);">total</div>
+        </div>
+        <button class="btn btn-danger" title="Remover pessoa"
+          onclick="event.stopPropagation(); removePerson('${p.id}', '${escapeHtml(p.nome).replace(/'/g,"\\'")}')">✕</button>
+      </div>`;
+  }).join("");
+
+  return `
+    <div style="display:flex;gap:8px;margin-bottom:18px;">
+      <input id="novoNomeInput" class="inp" placeholder="Nome da pessoa"
+        onkeydown="if(event.key==='Enter') addPerson()" />
+      <button class="btn btn-primary" style="white-space:nowrap;" onclick="addPerson()">Adicionar</button>
+    </div>
+    ${ state.people.length===0
+        ? `<div class="card" style="padding:28px;text-align:center;color:var(--muted);">Nenhuma pessoa ainda. Digite um nome acima e adicione para começar.</div>`
+        : `<div style="display:grid;gap:10px;">${rows}</div>` }
+  `;
+}
+
+function opt(value, label, selected){
+  return `<option value="${escapeHtml(value)}" ${selected? "selected":""}>${escapeHtml(label)}</option>`;
+}
+
+function renderSheet(p){
+  if(!p) return renderList();
+  ensureMesAtual(p);
+
+  // novos registros em cima, antigos embaixo
+  const linhasVisiveis = linhasDoMes(p).slice().reverse();
+
+  const linhasHtml = linhasVisiveis.length === 0
+    ? `<div class="card" style="padding:22px;text-align:center;color:var(--muted);">Nenhum lançamento em ${escapeHtml(p.mesAtual)} ainda. Toque em "+ Linha" ou "+ Hoje" para começar.</div>`
+    : linhasVisiveis.map(l=>{
+        const diaOpts = ['<option value="">—</option>'].concat(
+          Array.from({length:31},(_,i)=>String(i+1)).map(d=>opt(d,d,l.dia===d))
+        ).join("");
+        const semOpts = ['<option value="">—</option>'].concat(
+          DIAS_SEMANA.map(d=>opt(d,d,l.semana===d))
+        ).join("");
+        return `
+      <div class="line-card">
+        <div class="line-grid">
+          <div class="field"><label>Dia</label>
+            <select class="inp mono" onchange="onCampoLinha('${p.id}','${l.id}','dia',this.value)">${diaOpts}</select>
+          </div>
+          <div class="field"><label>Semana</label>
+            <select class="inp" onchange="onCampoLinha('${p.id}','${l.id}','semana',this.value)">${semOpts}</select>
+          </div>
+          <div class="field"><label>Manhã início</label>
+            <input type="text" inputmode="numeric" placeholder="8" class="inp mono" value="${escapeHtml(l.manhaIni)}"
+              onchange="this.value = onHorarioChange('${p.id}','${l.id}','manhaIni', this.value, 'manha')" />
+          </div>
+          <div class="field"><label>Manhã fim</label>
+            <input type="text" inputmode="numeric" placeholder="12" class="inp mono" value="${escapeHtml(l.manhaFim)}"
+              onchange="this.value = onHorarioChange('${p.id}','${l.id}','manhaFim', this.value, 'manha')" />
+          </div>
+          <div class="field"><label>Tarde início</label>
+            <input type="text" inputmode="numeric" placeholder="2" class="inp mono" value="${escapeHtml(l.tardeIni)}"
+              onchange="this.value = onHorarioChange('${p.id}','${l.id}','tardeIni', this.value, 'tarde')" />
+          </div>
+          <div class="field"><label>Tarde fim</label>
+            <input type="text" inputmode="numeric" placeholder="6" class="inp mono" value="${escapeHtml(l.tardeFim)}"
+              onchange="this.value = onHorarioChange('${p.id}','${l.id}','tardeFim', this.value, 'tarde')" />
+          </div>
+        </div>
+        <div class="line-footer">
+          <span class="line-total">Horas <strong class="mono" id="hora-${l.id}">${fmtHoras(linhaHoras(l))}</strong></span>
+          <button class="btn btn-danger" title="Remover lançamento" onclick="removeLinha('${p.id}','${l.id}')">Remover</button>
+        </div>
+      </div>`;
+      }).join("");
+
+  const mesOpts = MESES.map(m=>opt(m,m,p.mesAtual===m)).join("");
+
+  return `
+    <button class="btn btn-ghost" onclick="backToList()" style="margin-bottom:16px;">← Voltar</button>
+
+    <div class="card" style="padding:16px;margin-bottom:16px;">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <label class="label">Nome</label>
+          <input class="inp" style="font-size:18px;font-weight:700;margin-top:6px;" value="${escapeHtml(p.nome)}"
+            oninput="onNomeInput('${p.id}', this.value)" />
+        </div>
+        <div style="text-align:right;">
+          <div class="label">Total de ${escapeHtml(p.mesAtual)}</div>
+          <div class="mono" id="total-topo-${p.id}" style="font-size:26px;font-weight:700;color:var(--accent);line-height:1.1;white-space:nowrap;">
+            ${fmtHoras(totalDoMes(p))}
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <label class="label">Mês de lançamento</label>
+        <select class="inp" style="margin-top:6px;max-width:240px;" onchange="onMesAtualChange('${p.id}', this.value)">${mesOpts}</select>
+        <div class="hint">Cada mês é separado: ao trocar aqui, você vê e lança só os dias desse mês.</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      ${linhasHtml}
+    </div>
+
+    <div class="card" style="padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-weight:700;">Total de ${escapeHtml(p.mesAtual)}</span>
+      <span class="mono" id="total-rodape-${p.id}" style="font-weight:700;color:var(--accent);font-size:18px;">${fmtHoras(totalDoMes(p))}</span>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-ghost" onclick="addLinha('${p.id}')">+ Linha</button>
+      <button class="btn btn-ghost" onclick="addHoje('${p.id}')">+ Hoje</button>
+      <div style="flex:1;"></div>
+      <button class="btn btn-ghost" onclick="exportarImagem('${p.id}')">Exportar imagem</button>
+      <button class="btn btn-primary" onclick="exportarXlsx('${p.id}')">Exportar .xlsx</button>
+    </div>
+  `;
+}
+
+// ---------------- exportação xlsx (apenas o mês selecionado, já que são separados) ----------------
+function exportarXlsx(pid){
+  const p = findPerson(pid); if(!p) return;
+  const linhas = linhasDoMes(p);
+  const header = [
+    [state.headerTitle + " — " + p.mesAtual],
+    ["Nome:", p.nome],
+    [],
+    ["Dia","Mês","Semana","Manhã início","Manhã fim","Tarde início","Tarde fim","Total"],
+  ];
+  const corpo = linhas.map(l=>[
+    l.dia, l.mes, l.semana, l.manhaIni, l.manhaFim, l.tardeIni, l.tardeFim, fmtHoras(linhaHoras(l)),
+  ]);
+  const totalGeral = totalDoMes(p);
+  const rodape = [[],["","","","","","","Total do mês:", fmtHoras(totalGeral)]];
+  const aoa = [...header, ...corpo, ...rodape];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{wch:6},{wch:11},{wch:9},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12}];
+  ws["!merges"] = [{ s:{r:0,c:0}, e:{r:0,c:7} }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, p.mesAtual.slice(0,31));
+  const nomeArq = "Frequencia_" + (p.nome||"pessoa").replace(/[^\w\-]+/g,"_") + "_" + p.mesAtual + ".xlsx";
+  XLSX.writeFile(wb, nomeArq);
+}
+
+// ---------------- exportação imagem: desenho direto em canvas (sem foreignObject) ----------------
+// Evita foreignObject porque vários navegadores mobile (principalmente Safari/iOS) marcam o
+// canvas como "tainted" (contaminado) ao carregar SVG com HTML embutido, impedindo o download.
+function exportarImagem(pid){
+  const p = findPerson(pid); if(!p) return;
+  const linhas = linhasDoMes(p);
+
+  const cols = [
+    { label: "Dia", w: 55 },
+    { label: "Semana", w: 75 },
+    { label: "Manhã início", w: 100 },
+    { label: "Manhã fim", w: 95 },
+    { label: "Tarde início", w: 100 },
+    { label: "Tarde fim", w: 95 },
+    { label: "Horas", w: 90 },
+  ];
+  const padding = 28;
+  const tableWidth = cols.reduce((s,c)=>s+c.w,0);
+  const width = tableWidth + padding*2;
+  const titleH = 32, subH = 20, gapAfterHeader = 22;
+  const rowH = 34, headRowH = 34, totalRowH = 40;
+  const height = padding + titleH + subH + gapAfterHeader + headRowH + Math.max(linhas.length,1)*rowH + totalRowH + padding;
+
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = width*scale;
+  canvas.height = height*scale;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(scale, scale);
+
+  const ink = "#16302b", muted = "#6b7a72", border = "#dfe3dd", accent = "#2f7d63";
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0,0,width,height);
+
+  let y = padding;
+  ctx.fillStyle = ink;
+  ctx.font = "700 20px Arial, Helvetica, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText((state.headerTitle || "") + " — " + p.mesAtual, padding, y);
+  y += titleH;
+
+  ctx.fillStyle = muted;
+  ctx.font = "400 14px Arial, Helvetica, sans-serif";
+  ctx.fillText(p.nome || "", padding, y);
+  y += subH + gapAfterHeader - 10;
+
+  const colX = [];
+  { let x = padding; cols.forEach(c=>{ colX.push(x); x += c.w; }); }
+
+  ctx.font = "700 11px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = muted;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const headMidY = y + headRowH/2;
+  cols.forEach((c,i)=>{ ctx.fillText(c.label.toUpperCase(), colX[i] + c.w/2, headMidY); });
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, y + headRowH);
+  ctx.lineTo(padding + tableWidth, y + headRowH);
+  ctx.stroke();
+  y += headRowH;
+
+  if(linhas.length === 0){
+    ctx.font = "400 13px Arial, Helvetica, sans-serif";
+    ctx.fillStyle = muted;
+    ctx.fillText("Nenhum lançamento neste mês", padding + tableWidth/2, y + rowH/2);
+    y += rowH;
+  } else {
+    linhas.forEach(l=>{
+      const midY = y + rowH/2;
+      const vals = [l.dia||"—", l.semana||"—", l.manhaIni||"—", l.manhaFim||"—", l.tardeIni||"—", l.tardeFim||"—"];
+      ctx.fillStyle = ink;
+      ctx.font = "400 13px Arial, Helvetica, sans-serif";
+      vals.forEach((v,i)=>{ ctx.fillText(String(v), colX[i] + cols[i].w/2, midY); });
+      ctx.font = "700 13px Arial, Helvetica, sans-serif";
+      ctx.fillText(fmtHoras(linhaHoras(l)), colX[6] + cols[6].w/2, midY);
+
+      ctx.strokeStyle = border;
+      ctx.beginPath();
+      ctx.moveTo(padding, y + rowH);
+      ctx.lineTo(padding + tableWidth, y + rowH);
+      ctx.stroke();
+      y += rowH;
+    });
+  }
+
+  const totalGeral = totalDoMes(p);
+  y += 4;
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(padding, y);
+  ctx.lineTo(padding + tableWidth, y);
+  ctx.stroke();
+  y += totalRowH/2 + 4;
+  ctx.font = "700 14px Arial, Helvetica, sans-serif";
+  ctx.fillStyle = ink;
+  ctx.textAlign = "right";
+  const totalLabelX = colX[5] + cols[5].w; // termina no fim da coluna "Tarde fim"
+  ctx.fillText("Total do mês", totalLabelX, y);
+  ctx.fillStyle = accent;
+  ctx.textAlign = "center";
+  ctx.fillText(fmtHoras(totalGeral), colX[6] + cols[6].w/2, y);
+
+  canvas.toBlob((blob)=>{
+    if(!blob){ alert("Não foi possível gerar a imagem. Tente novamente."); return; }
+    const nomeArq = "Frequencia_" + (p.nome||"pessoa").replace(/[^\w\-]+/g,"_") + "_" + p.mesAtual + ".png";
+    const link = document.createElement("a");
+    link.download = nomeArq;
+    link.href = URL.createObjectURL(blob);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(()=>URL.revokeObjectURL(link.href), 4000);
+  }, "image/png");
+}
+
+// ---------------- senha de acesso ----------------
+const SENHA = "6783";
+const AUTH_KEY = "folha-frequencia:auth";
+function estaAutenticado(){ return sessionStorage.getItem(AUTH_KEY) === "1"; }
+function mostrarApp(){
+  document.getElementById("loginOverlay").style.display = "none";
+  document.getElementById("appWrap").style.display = "";
+}
+function tentarLogin(){
+  const el = document.getElementById("senhaInput");
+  if((el.value || "").trim() === SENHA){
+    sessionStorage.setItem(AUTH_KEY, "1");
+    mostrarApp();
+  } else {
+    document.getElementById("senhaErro").textContent = "Senha incorreta";
+    el.value = "";
+    el.focus();
+  }
+}
+
+// ---------------- inicialização ----------------
+load();
+renderApp();
+if(estaAutenticado()){
+  mostrarApp();
+} else {
+  document.getElementById("senhaInput").focus();
+}
+</script>
+</body>
+</html>
