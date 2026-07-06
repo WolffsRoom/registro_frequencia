@@ -50,6 +50,12 @@
   .line-total{font-size:13px;color:var(--muted);}
   .line-total strong{color:var(--ink);font-size:15px;margin-left:4px;}
 
+  /* linhas antigas ficam mais discretas; a atual (primeira, no topo) recebe o foco.
+     usa filter (e não opacity) porque a animação de entrada controla o opacity. */
+  .line-card.line-dim{ background:#ececed; border-color:#d7d7d9; filter:opacity(.68);
+    transition:filter .18s ease, background .18s ease; }
+  .line-card.line-dim:focus-within{ filter:none; background:var(--surface); border-color:var(--border); }
+
   :focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
 
   /* ---- animações de transição ---- */
@@ -87,7 +93,10 @@
     .line-grid{ grid-template-columns:repeat(2, 1fr); }
   }
 
-  @media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important;} }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important; animation:none !important;}
+    .stagger{opacity:1 !important;} /* sem animação, garante que as linhas apareçam */
+  }
 </style>
 </head>
 <body>
@@ -479,7 +488,7 @@ function renderSheet(p){
           DIAS_SEMANA.map(d=>opt(d,d,l.semana===d))
         ).join("");
         return `
-      <div class="line-card stagger" id="linha-${l.id}" style="animation-delay:${i*40}ms;">
+      <div class="line-card stagger${i>0?' line-dim':''}" id="linha-${l.id}" style="animation-delay:${i*40}ms;">
         <div class="line-grid">
           <div class="field"><label>Dia</label>
             <select class="inp mono" onchange="onCampoLinha('${p.id}','${l.id}','dia',this.value)">${diaOpts}</select>
