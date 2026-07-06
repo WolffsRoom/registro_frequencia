@@ -4,16 +4,23 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Folha de Frequência</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root{
-    --bg:#363435; --surface:#ffffff; --ink:#16302b; --accent:#2f7d63;
-    --accent-soft:#e4f0ea; --border:#dfe3dd; --muted:#6b7a72;
-    --danger:#b4472f; --danger-soft:#f6e5e0;
+    --bg:#363435; --surface:#ffffff; --ink:#1f1e1f; --accent:#3a3a3c;
+    --accent-soft:#ececee; --border:#dcdcde; --muted:#6f6e70;
+    --danger:#a23b28; --danger-soft:#f3e5e1;
+    --font-body:"Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-head:"Oswald", var(--font-body);
   }
   *{box-sizing:border-box; min-width:0;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);overflow-x:hidden;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;}
+    font-family: var(--font-body);}
   .mono{font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace; font-variant-numeric: tabular-nums;}
   .wrap{max-width:720px;margin:0 auto;padding:18px 14px 60px;}
   .inp{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--border);
@@ -22,10 +29,10 @@
   .btn{font:inherit;font-weight:600;cursor:pointer;border-radius:9px;padding:9px 14px;
     border:1px solid transparent;transition:filter .15s, background .15s, transform .05s;}
   .btn:active{transform:translateY(1px);}
-  .btn-primary{background:var(--accent);color:#fff;}
-  .btn-primary:hover{filter:brightness(1.06);}
-  .btn-ghost{background:transparent;color:var(--ink);border-color:var(--border);}
-  .btn-ghost:hover{background:var(--accent-soft);border-color:var(--accent);}
+  .btn-primary{background:#ffffff;color:var(--ink);border-color:#ffffff;}
+  .btn-primary:hover{background:#e7e7ea;border-color:#e7e7ea;}
+  .btn-ghost{background:rgba(255,255,255,.07);color:#ededf0;border-color:rgba(255,255,255,.24);}
+  .btn-ghost:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.42);}
   .btn-danger{background:transparent;color:var(--danger);border-color:transparent;padding:6px 10px;font-size:13px;}
   .btn-danger:hover{background:var(--danger-soft);}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;}
@@ -77,10 +84,9 @@
 </div>
 
 <div id="appWrap" class="wrap" style="display:none;">
-  <div style="margin-bottom:18px;">
-    <label class="label" for="headerTitleInput">Cabeçalho</label>
-    <input id="headerTitleInput" class="inp" style="font-size:19px;font-weight:700;margin-top:6px;"
-      oninput="onHeaderInput(this.value)" />
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:22px;">
+    <img src="logo-branca.png" alt="" style="height:46px;width:auto;flex:0 0 auto;" />
+    <h1 style="font-family:var(--font-head);font-weight:600;font-size:26px;letter-spacing:.02em;color:#f2f2f4;margin:0;text-transform:uppercase;">Folha de Frequência</h1>
   </div>
   <div id="app"></div>
 </div>
@@ -158,7 +164,7 @@ function load(){
     const raw = localStorage.getItem(STORAGE_KEY);
     if(raw){
       const d = JSON.parse(raw);
-      if(d.headerTitle) state.headerTitle = d.headerTitle;
+      // título é fixo ("Folha de Frequência"); ignora valor salvo antigo
       if(Array.isArray(d.people)) state.people = d.people;
     }
   }catch(e){ console.error("Falha ao carregar dados salvos", e); }
@@ -221,6 +227,7 @@ function addHoje(pid){
 }
 function removeLinha(pid, lid){
   const p = findPerson(pid); if(!p) return;
+  if(!confirm("Remover este lançamento?")) return;
   animarSaida(document.getElementById("linha-"+lid), ()=>{
     p.linhas = p.linhas.filter(l=>l.id!==lid);
     save();
@@ -229,11 +236,6 @@ function removeLinha(pid, lid){
 }
 
 // ---------------- edição de campos (sem re-render, evita perder foco) ----------------
-function onHeaderInput(v){ state.headerTitle = v; save(); }
-function onNomeInput(pid, v){
-  const p = findPerson(pid); if(!p) return;
-  p.nome = v; save();
-}
 function onCampoLinha(pid, lid, campo, v){
   const p = findPerson(pid); if(!p) return;
   const l = p.linhas.find(x=>x.id===lid); if(!l) return;
@@ -258,7 +260,6 @@ function onHorarioChange(pid, lid, campo, raw, periodo){
 
 // ---------------- render ----------------
 function renderApp(){
-  document.getElementById("headerTitleInput").value = state.headerTitle;
   const app = document.getElementById("app");
   app.innerHTML = view.screen==="sheet" && view.selectedId
     ? renderSheet(findPerson(view.selectedId))
@@ -374,8 +375,7 @@ function renderSheet(p){
       <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div style="flex:1;min-width:160px;">
           <label class="label">Nome</label>
-          <input class="inp" style="font-size:18px;font-weight:700;margin-top:6px;" value="${escapeHtml(p.nome)}"
-            oninput="onNomeInput('${p.id}', this.value)" />
+          <div style="font-size:20px;font-weight:700;margin-top:6px;word-break:break-word;">${escapeHtml(p.nome)}</div>
         </div>
         <div style="text-align:right;">
           <div class="label">Total de ${escapeHtml(p.mesAtual)}</div>
@@ -405,7 +405,8 @@ function renderSheet(p){
       <button class="btn btn-ghost" onclick="addHoje('${p.id}')">+ Hoje</button>
       <div style="flex:1;"></div>
       <button class="btn btn-ghost" onclick="exportarImagem('${p.id}')">Exportar imagem</button>
-      <button class="btn btn-primary" onclick="exportarXlsx('${p.id}')">Exportar .xlsx</button>
+      <button class="btn btn-ghost" onclick="exportarXlsx('${p.id}')">Exportar .xlsx</button>
+      <button class="btn btn-primary" onclick="exportarPdf('${p.id}')">Exportar PDF</button>
     </div>
   `;
 }
@@ -435,6 +436,101 @@ function exportarXlsx(pid){
   XLSX.utils.book_append_sheet(wb, ws, p.mesAtual.slice(0,31));
   const nomeArq = "Frequencia_" + (p.nome||"pessoa").replace(/[^\w\-]+/g,"_") + "_" + p.mesAtual + ".xlsx";
   XLSX.writeFile(wb, nomeArq);
+}
+
+// ---------------- exportação PDF: relatório oficial (modelo relatorio.docx) ----------------
+// Reproduz a "FOLHA DE FREQUÊNCIA" da Chapeação Paulinho: logo, nome, CNPJ, tabela
+// DIA | 1º/2º/3º TURNO (Entrada // Saída) | TOTAL DO DIA, observações e assinatura.
+const CNPJ_EMPRESA = "12.009.355/0001-20";
+function turnoCel(ini, fim){
+  if(!ini && !fim) return "";
+  return (ini || "—") + " // " + (fim || "—");
+}
+function exportarPdf(pid){
+  const p = findPerson(pid); if(!p) return;
+  if(!window.jspdf || !window.jspdf.jsPDF){
+    alert("A biblioteca de PDF não carregou. Verifique a conexão e tente novamente.");
+    return;
+  }
+  const gerar = (logoData)=>{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit:"mm", format:"a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let y = margin;
+
+    if(logoData){
+      const w = 52, h = w * (911/1280);
+      doc.addImage(logoData, "PNG", (pageW - w)/2, y, w, h);
+      y += h + 3;
+    }
+    doc.setFont("helvetica","bold"); doc.setFontSize(19);
+    doc.text("FOLHA DE FREQUÊNCIA", pageW/2, y + 5, { align:"center" });
+    y += 12;
+
+    doc.setFontSize(11);
+    doc.text("Nome: " + (p.nome || ""), margin, y); y += 6;
+    doc.text("CNPJ: " + CNPJ_EMPRESA, margin, y); y += 6;
+    doc.setFont("helvetica","normal");
+    doc.text("Mês de referência: " + p.mesAtual, margin, y); y += 2;
+
+    const linhas = linhasDoMes(p);
+    const body = linhas.map(l=>[
+      l.dia || "",
+      turnoCel(l.manhaIni, l.manhaFim),
+      turnoCel(l.tardeIni, l.tardeFim),
+      "",
+      fmtHoras(linhaHoras(l)),
+    ]);
+
+    doc.autoTable({
+      startY: y + 3,
+      head: [["DIA","1º TURNO\nEntrada // Saída","2º TURNO\nEntrada // Saída","3º TURNO\nEntrada // Saída","TOTAL DO DIA"]],
+      body: body.length ? body : [["","","","",""]],
+      foot: [["", "", "", "TOTAL DO MÊS", fmtHoras(totalDoMes(p))]],
+      theme: "grid",
+      styles:{ halign:"center", valign:"middle", fontSize:9, textColor:[30,30,30], lineColor:[120,120,120], lineWidth:0.2, cellPadding:2 },
+      headStyles:{ fillColor:[54,52,53], textColor:[255,255,255], fontStyle:"bold", fontSize:9 },
+      footStyles:{ fillColor:[236,236,238], textColor:[30,30,30], fontStyle:"bold" },
+      columnStyles:{ 0:{ cellWidth:22 }, 4:{ cellWidth:30 } },
+      margin:{ left:margin, right:margin },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    const bottom = doc.internal.pageSize.getHeight() - margin;
+    if(y > bottom - 45){ doc.addPage(); y = margin; }
+
+    doc.setFont("helvetica","bold"); doc.setFontSize(11);
+    doc.text("Observações:", margin, y); y += 2;
+    doc.setDrawColor(120); doc.setLineWidth(0.2);
+    doc.rect(margin, y, pageW - 2*margin, 24); y += 24 + 12;
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(11);
+    doc.text("Data: ____ / ____ / ________", margin, y);
+    doc.text("Assinatura do funcionário: ______________________", pageW - margin, y, { align:"right" });
+
+    const nome = (p.nome || "pessoa").replace(/[^\w\-]+/g,"_");
+    doc.save("Relatorio_Frequencia_" + nome + "_" + p.mesAtual + ".pdf");
+  };
+
+  // carrega o logo (preto) sobre fundo branco para o PDF.
+  // reduz a resolução: o jsPDF guarda PNG sem compressão, então o tamanho é proporcional aos pixels.
+  const img = new Image();
+  img.onload = ()=>{
+    try{
+      const alvoW = 460;
+      const esc = Math.min(1, alvoW / img.naturalWidth);
+      const w = Math.round(img.naturalWidth * esc), h = Math.round(img.naturalHeight * esc);
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+      gerar(c.toDataURL("image/png"));
+    }catch(e){ gerar(null); }
+  };
+  img.onerror = ()=> gerar(null);
+  img.src = "logopng.png";
 }
 
 // ---------------- exportação imagem: desenho direto em canvas (sem foreignObject) ----------------
