@@ -31,6 +31,16 @@
           "manhaFim": "11:00",
           "tardeIni": "14:00",
           "tardeFim": "18:00"
+        },
+        {
+          "id": "cpo7cite",
+          "dia": "7",
+          "mes": "Julho",
+          "semana": "Terça",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
