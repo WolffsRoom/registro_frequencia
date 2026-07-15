@@ -126,7 +126,7 @@
           "semana": "Segunda",
           "manhaIni": "08:00",
           "manhaFim": "11:30",
-          "tardeIni": "",
+          "tardeIni": "00:00",
           "tardeFim": ""
         }
       ]
