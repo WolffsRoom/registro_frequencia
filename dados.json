@@ -14,6 +14,16 @@
           "manhaFim": "11:00",
           "tardeIni": "13:50",
           "tardeFim": "18:55"
+        },
+        {
+          "id": "yanosaax",
+          "dia": "",
+          "mes": "Junho",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
