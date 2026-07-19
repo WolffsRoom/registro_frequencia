@@ -128,6 +128,16 @@
           "manhaFim": "11:30",
           "tardeIni": "00:00",
           "tardeFim": "00:00"
+        },
+        {
+          "id": "zy5zy92c",
+          "dia": "",
+          "mes": "Julho",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     }
