@@ -138,6 +138,16 @@
           "manhaFim": "11:30",
           "tardeIni": "13:30",
           "tardeFim": "18:00"
+        },
+        {
+          "id": "1mu43b9g",
+          "dia": "",
+          "mes": "Julho",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     }
