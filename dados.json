@@ -161,6 +161,16 @@
           "manhaFim": "11:30",
           "tardeIni": "13:30",
           "tardeFim": "18:00"
+        },
+        {
+          "id": "eseyu742",
+          "dia": "",
+          "mes": "Agosto",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
