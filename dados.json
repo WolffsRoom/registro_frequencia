@@ -34,6 +34,16 @@
           "manhaFim": "11:30",
           "tardeIni": "13:30",
           "tardeFim": "18:00"
+        },
+        {
+          "id": "u4hf87vm",
+          "dia": "",
+          "mes": "Agosto",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
