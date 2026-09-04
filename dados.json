@@ -251,6 +251,16 @@
           "manhaFim": "11:30",
           "tardeIni": "13:30",
           "tardeFim": "18:00"
+        },
+        {
+          "id": "padsaorw",
+          "dia": "",
+          "mes": "Setembro",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
