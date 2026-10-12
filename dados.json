@@ -361,6 +361,16 @@
           "manhaFim": "11:30",
           "tardeIni": "13:30",
           "tardeFim": "18:00"
+        },
+        {
+          "id": "30gzeq42",
+          "dia": "",
+          "mes": "Outubro",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
