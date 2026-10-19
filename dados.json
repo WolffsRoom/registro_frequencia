@@ -381,6 +381,16 @@
           "manhaFim": "11:30",
           "tardeIni": "13:30",
           "tardeFim": ""
+        },
+        {
+          "id": "ono6qbv5",
+          "dia": "",
+          "mes": "Outubro",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
