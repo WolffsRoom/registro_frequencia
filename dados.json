@@ -877,6 +877,16 @@
           "manhaIni": "13:00",
           "manhaFim": "11:30",
           "tardeIni": "13:30",
+          "tardeFim": "18:00"
+        },
+        {
+          "id": "mocb157c",
+          "dia": "",
+          "mes": "Novembro",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
           "tardeFim": ""
         }
       ]
