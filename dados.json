@@ -54,6 +54,16 @@
           "manhaFim": "00:00",
           "tardeIni": "13:30",
           "tardeFim": "17:00"
+        },
+        {
+          "id": "0w2kdsu2",
+          "dia": "",
+          "mes": "Novembro",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
+          "tardeFim": ""
         }
       ]
     },
