@@ -887,6 +887,16 @@
           "manhaIni": "08:00",
           "manhaFim": "11:30",
           "tardeIni": "13:30",
+          "tardeFim": "18:00"
+        },
+        {
+          "id": "qssgd465",
+          "dia": "",
+          "mes": "Novembro",
+          "semana": "",
+          "manhaIni": "",
+          "manhaFim": "",
+          "tardeIni": "",
           "tardeFim": ""
         }
       ]
